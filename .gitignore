@@ -1,0 +1,10 @@
+__pycache__/
+.vscode/
+*.pyc
+
+# Local test data (optional: remove these if you want to push your samples)
+Trial Mail.xlsx
+PDF Files/
+
+# Temp files
+tmp*

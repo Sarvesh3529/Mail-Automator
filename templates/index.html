@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Automator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background: #0f172a; color: white; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        #console { font-family: 'Courier New', monospace; height: 300px; overflow-y: auto; background: #000; color: #10b981; border: 1px solid #334155; padding: 1rem; border-radius: 0.5rem; }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+    <!-- Admin Button -->
+    <div class="absolute top-4 right-4">
+        <button onclick="adminLogin()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-bold uppercase tracking-widest transition-colors border border-slate-700">
+            Admin
+        </button>
+    </div>
+
+    <div class="glass w-full max-w-2xl p-8 rounded-2xl shadow-2xl">
+        <h1 class="text-3xl font-bold mb-6 text-center bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">GST Email Dispatcher</h1>
+        
+        <form id="emailForm" class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Gmail Address</label>
+                    <input type="email" id="senderEmail" name="email" placeholder="example@gmail.com" required class="w-full p-2 rounded bg-slate-800 border border-slate-700 focus:border-blue-500 outline-none text-white">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Gmail App Password</label>
+                    <div class="relative">
+                        <input type="password" id="appPassword" name="password" placeholder="xxxx xxxx xxxx xxxx" required class="w-full p-2 pr-10 rounded bg-slate-800 border border-slate-700 focus:border-blue-500 outline-none text-white">
+                        <button type="button" onclick="togglePasswordVisibility('appPassword')" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium mb-1">Excel Data (.xlsx)</label>
+                <input type="file" name="excel" accept=".xlsx" required class="w-full p-2 text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer bg-slate-800 rounded">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium mb-1">PDF Files</label>
+                <input type="file" name="pdfs" multiple accept=".pdf" required class="w-full p-2 text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer bg-slate-800 rounded">
+            </div>
+
+            <div class="flex items-center space-x-4 py-2">
+                <span class="text-sm font-medium">Mapping Logic:</span>
+                <label class="inline-flex items-center cursor-pointer">
+                    <input type="radio" name="mapping_mode" value="match" checked class="form-radio text-blue-600">
+                    <span class="ml-2 text-sm">Match ID in Name</span>
+                </label>
+                <label class="inline-flex items-center cursor-pointer">
+                    <input type="radio" name="mapping_mode" value="sequential" class="form-radio text-blue-600">
+                    <span class="ml-2 text-sm">Sequential (Order given)</span>
+                </label>
+            </div>
+
+            <button type="submit" id="sendBtn" class="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl font-bold text-lg shadow-lg hover:scale-[1.02] transition-transform disabled:opacity-50">
+                Start Sending Mails
+            </button>
+        </form>
+
+        <div class="mt-8">
+            <h2 class="text-sm font-semibold mb-2 uppercase tracking-wider text-slate-400">Activity Log</h2>
+            <div id="console" class="shadow-inner">
+                <div class="text-slate-500 italic">System ready...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('emailForm');
+        const logBox = document.getElementById('console');
+        const sendBtn = document.getElementById('sendBtn');
+
+        function adminLogin() {
+            const pass = prompt("Enter Admin Password:");
+            if (pass === 'Dogesh') {
+                document.getElementById('senderEmail').value = 'sarveshtambe2011@gmail.com';
+                document.getElementById('appPassword').value = 'pusx test mdkc ionu';
+                addLog('Admin authenticated. Your credentials have been applied.');
+            } else if (pass !== null) {
+                alert('Wrong password!');
+            }
+        }
+
+        function togglePasswordVisibility(id) {
+            const input = document.getElementById(id);
+            input.type = input.type === 'password' ? 'text' : 'password';
+        }
+
+        function addLog(msg) {
+            const div = document.createElement('div');
+            div.className = 'mb-1 border-l-2 border-emerald-500 pl-2';
+            div.textContent = msg;
+            logBox.appendChild(div);
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        function setFormDisabled(disabled) {
+            const elements = form.querySelectorAll('input, button');
+            elements.forEach(el => el.disabled = disabled);
+        }
+
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            // Capture data BEFORE disabling fields
+            const formData = new FormData(form);
+            
+            logBox.innerHTML = '';
+            setFormDisabled(true);
+            addLog('Getting things ready...');
+            const response = await fetch('/send', {
+                method: 'POST',
+                body: formData
+            });
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                
+                const text = decoder.decode(value);
+                const lines = text.split('\n');
+                lines.forEach(line => {
+                    if (line.startsWith('data: ')) {
+                        const msg = line.replace('data: ', '').trim();
+                        if (msg) addLog(msg);
+                    }
+                });
+            }
+            
+            setFormDisabled(false);
+        };
+    </script>
+</body>
+</html>
