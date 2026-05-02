@@ -8,3 +8,7 @@ PDF Files/
 
 # Temp files
 tmp*
+
+# Credentials
+.env
+instance/

@@ -1,4 +1,5 @@
 import argparse
+import os
 import re
 import smtplib
 import ssl
@@ -18,8 +19,9 @@ EXCEL_FILE = BASE_DIR / "Trial Mail.xlsx"
 PDF_DIR = BASE_DIR / "PDF Files"
 XML_NS = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 
-GMAIL_USER = "sarveshtambe2011@gmail.com"  # <--- UPDATE THIS WITH YOUR GMAIL
-GMAIL_PASS = "pusx test mdkc ionu"    # The 16-character App Password provided
+# Fetches from environment variables or uses placeholders
+GMAIL_USER = os.getenv("GMAIL_USER", "your-email@gmail.com")
+GMAIL_PASS = os.getenv("GMAIL_PASS", "")
 
 # Change these if you want a different message.
 DEFAULT_SUBJECT = "Pending GSTR-3B return"
