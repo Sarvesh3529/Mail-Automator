@@ -13,6 +13,9 @@ from email.mime.text import MIMEText
 from pathlib import Path
 from typing import Dict, List, Optional
 from xml.etree import ElementTree as ET
+from dotenv import load_dotenv
+
+load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent
 EXCEL_FILE = BASE_DIR / "Trial Mail.xlsx"
@@ -143,7 +146,7 @@ def build_jobs(rows: List[Dict[str, str]], pdf_files: List[Path], mode: str = "m
     return jobs
 
 
-def send_with_gmail(jobs: List[Dict[str, str]], user: str, password: str):
+def send_with_gmail(jobs: List[Dict[str, str]], user: str, password: str, timeout: int = 10):
     context = ssl.create_default_context()
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:

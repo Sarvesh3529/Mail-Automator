@@ -3,6 +3,9 @@ from flask import Flask, render_template, request, jsonify, Response, stream_wit
 from pathlib import Path
 import tempfile
 import file as email_logic
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 
