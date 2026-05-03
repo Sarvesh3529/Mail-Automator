@@ -147,42 +147,42 @@ def build_jobs(rows: List[Dict[str, str]], pdf_files: List[Path], mode: str = "m
     return jobs
 
 
-def send_with_sendgrid(jobs: List[Dict[str, str]], sender_email: str, api_key: str):
-    sg = SendGridAPIClient(api_key)
+def send_with_gmail(jobs: List[Dict[str, str]], user: str, password: str):
+    context = ssl.create_default_context()
     try:
-        yield "Initializing SendGrid API Client..."
-        for job in jobs:
-            message = Mail(
-                from_email=sender_email,
-                to_emails=job['to'],
-                subject=job['subject'],
-                plain_text_content=job['body']
-            )
+        yield "Connecting to Gmail SMTP..."
+        # Using Port 587 with STARTTLS for better compatibility
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
+            server.ehlo()
+            server.starttls(context=context)
+            server.ehlo()
+            server.login(user, password)
+            yield "Login successful. Dispatching mails..."
+            
+            for job in jobs:
+                    msg = MIMEMultipart()
+                    msg['From'] = user
+                    msg['To'] = job['to']
+                    msg['Subject'] = job['subject']
+                    msg.attach(MIMEText(job['body'], 'plain'))
 
-            attachment_path = Path(job['attachment'])
-            with open(attachment_path, 'rb') as f:
-                data = f.read()
-                encoded_file = base64.b64encode(data).decode()
+                    attachment_path = Path(job['attachment'])
+                    with open(attachment_path, "rb") as f:
+                        part = MIMEBase("application", "octet-stream")
+                        part.set_payload(f.read())
+                    
+                    encoders.encode_base64(part)
+                    part.add_header("Content-Disposition", f'attachment; filename="{attachment_path.name}"')
+                    msg.attach(part)
 
-            attached_file = Attachment(
-                FileContent(encoded_file),
-                FileName(attachment_path.name),
-                FileType('application/pdf'),
-                Disposition('attachment')
-            )
-            message.attachment = attached_file
-
-            try:
-                response = sg.send(message)
-                if response.status_code in [200, 201, 202]:
-                    yield f"Successfully sent to {job['to']}."
-                else:
-                    yield f"Error sending to {job['to']}: Status {response.status_code}"
-            except Exception as e:
-                yield f"Failed for {job['to']}: {str(e)}"
+                    try:
+                        server.sendmail(user, job['to'], msg.as_string())
+                        yield f"Successfully sent to {job['to']}."
+                    except Exception as e:
+                        yield f"Failed for {job['to']}: {str(e)}"
 
     except Exception as e:
-        raise RuntimeError(str(e))
+        raise RuntimeError(f"SMTP Error: {str(e)}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -210,8 +210,8 @@ def main() -> int:
 
     print(f"Prepared {len(jobs)} email jobs.")
     try:
-        for msg in send_with_resend(jobs, GMAIL_USER, GMAIL_PASS):
-            print(f"  [Resend] {msg}")
+        for msg in send_with_gmail(jobs, GMAIL_USER, GMAIL_PASS):
+            print(f"  [Gmail] {msg}")
     except Exception as exc:
         print(f"\nError: {exc}")
         return 1
