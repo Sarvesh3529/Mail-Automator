@@ -151,10 +151,10 @@ def send_with_gmail(jobs: List[Dict[str, str]], user: str, password: str):
     context = ssl.create_default_context()
     server = None
     
-    # Try common SMTP ports in order of reliability
+    # Prioritize Port 587 as confirmed working in this environment
     connection_configs = [
-        (465, True),  # Port 465: Explicit SSL
-        (587, False)  # Port 587: STARTTLS
+        (587, False), # Port 587: STARTTLS
+        (465, True)   # Port 465: Explicit SSL (Fallback)
     ]
     
     last_exception = None
