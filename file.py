@@ -149,8 +149,9 @@ def build_jobs(rows: List[Dict[str, str]], pdf_files: List[Path], mode: str = "m
 def send_with_gmail(jobs: List[Dict[str, str]], user: str, password: str, timeout: int = 30):
     context = ssl.create_default_context()
     try:
-        yield f"Connecting to Gmail (timeout: {timeout}s)..."
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context, timeout=timeout) as server:
+        yield f"Connecting to Gmail via Port 587 (timeout: {timeout}s)..."
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=timeout) as server:
+            server.starttls(context=context)
             server.login(user, password)
             yield "Login successful. Starting dispatch..."
             for job in jobs:
