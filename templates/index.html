@@ -9,14 +9,19 @@
         body { background: #0f172a; color: white; }
         .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
         
-        /* Fix for invisible text/background on inputs and autofill */
-        input { background-color: #1e293b !important; color: white !important; }
+        /* Force dark background and white text for all inputs */
+        input, select, textarea { 
+            background-color: #1e293b !important; 
+            color: #ffffff !important; 
+        }
+
+        /* Specific fix for browser autofill background-color injection */
         input:-webkit-autofill,
         input:-webkit-autofill:hover, 
         input:-webkit-autofill:focus {
-            -webkit-text-fill-color: white !important;
+            -webkit-text-fill-color: #ffffff !important;
+            box-shadow: 0 0 0px 1000px #1e293b inset !important;
             -webkit-box-shadow: 0 0 0px 1000px #1e293b inset !important;
-            transition: background-color 5000s ease-in-out 0s;
         }
 
         #console { font-family: 'Courier New', monospace; height: 300px; overflow-y: auto; background: #000; color: #10b981; border: 1px solid #334155; padding: 1rem; border-radius: 0.5rem; }
