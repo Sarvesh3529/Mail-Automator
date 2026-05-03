@@ -3,18 +3,18 @@ import os
 import re
 import smtplib
 import ssl
-import socket
 import sys
 import textwrap
 import zipfile
-from email import encoders
-from email.mime.base import MIMEBase
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+import base64
 from pathlib import Path
 from typing import Dict, List, Optional
 from xml.etree import ElementTree as ET
 from dotenv import load_dotenv
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 load_dotenv()
 
@@ -147,38 +147,40 @@ def build_jobs(rows: List[Dict[str, str]], pdf_files: List[Path], mode: str = "m
     return jobs
 
 
-def send_with_gmail(jobs: List[Dict[str, str]], user: str, password: str, timeout: int = 30):
-    context = ssl.create_default_context()
+def send_with_sendgrid(jobs: List[Dict[str, str]], sender_email: str, api_key: str):
+    sg = SendGridAPIClient(api_key)
     try:
-        yield f"Connecting to Gmail (Port 587)..."
-        remote_host = "smtp.gmail.com"
-        port = 587
+        yield "Initializing SendGrid API Client..."
+        for job in jobs:
+            message = Mail(
+                from_email=sender_email,
+                to_emails=job['to'],
+                subject=job['subject'],
+                plain_text_content=job['body']
+            )
 
-        # Using hostname with Port 587 is the standard for cloud reliability
-        with smtplib.SMTP(remote_host, port, timeout=timeout) as server:
-            server.ehlo()  # Identify to server
-            server.starttls(context=context)
-            server.ehlo()  # Re-identify after securing connection
-            server.login(user, password)
-            yield "Login successful. Starting dispatch..."
-            for job in jobs:
-                msg = MIMEMultipart()
-                msg['From'] = user
-                msg['To'] = job['to']
-                msg['Subject'] = job['subject']
-                msg.attach(MIMEText(job['body'], 'plain'))
+            attachment_path = Path(job['attachment'])
+            with open(attachment_path, 'rb') as f:
+                data = f.read()
+                encoded_file = base64.b64encode(data).decode()
 
-                attachment_path = Path(job['attachment'])
-                with open(attachment_path, "rb") as f:
-                    part = MIMEBase("application", "octet-stream")
-                    part.set_payload(f.read())
-                
-                encoders.encode_base64(part)
-                part.add_header("Content-Disposition", f'attachment; filename="{attachment_path.name}"')
-                msg.attach(part)
+            attached_file = Attachment(
+                FileContent(encoded_file),
+                FileName(attachment_path.name),
+                FileType('application/pdf'),
+                Disposition('attachment')
+            )
+            message.attachment = attached_file
 
-                server.sendmail(user, job['to'], msg.as_string())
-                yield f"Successfully sent to {job['to']}."
+            try:
+                response = sg.send(message)
+                if response.status_code in [200, 201, 202]:
+                    yield f"Successfully sent to {job['to']}."
+                else:
+                    yield f"Error sending to {job['to']}: Status {response.status_code}"
+            except Exception as e:
+                yield f"Failed for {job['to']}: {str(e)}"
+
     except Exception as e:
         raise RuntimeError(str(e))
 
@@ -208,8 +210,8 @@ def main() -> int:
 
     print(f"Prepared {len(jobs)} email jobs.")
     try:
-        for msg in send_with_gmail(jobs, GMAIL_USER, GMAIL_PASS):
-            print(f"  [Gmail] {msg}")
+        for msg in send_with_resend(jobs, GMAIL_USER, GMAIL_PASS):
+            print(f"  [Resend] {msg}")
     except Exception as exc:
         print(f"\nError: {exc}")
         return 1

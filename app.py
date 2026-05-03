@@ -74,7 +74,7 @@ def send_emails():
                     yield "data: Error: No matching documents were found for your contacts.\n\n"
                     return
 
-                yield f"data: Found {len(jobs)} matches. Initializing SMTP...\n\n"
+                yield f"data: Found {len(jobs)} matches. Connecting to SMTP...\n\n"
                 
                 for status_msg in email_logic.send_with_gmail(jobs, email, password):
                     yield f"data: {status_msg}\n\n"
