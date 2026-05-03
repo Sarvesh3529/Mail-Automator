@@ -83,11 +83,9 @@ def send_emails():
             except Exception as e:
                 err = str(e).lower()
                 if "authentication" in err or "password" in err:
-                    yield "data: Error: Login failed. Check your Gmail address and App Password.\n\n"
-                elif "network" in err or "reach" in err:
-                    yield "data: Error: Connection lost. Check your internet.\n\n"
+                    yield "data: Error: Gmail Login failed. Verify your App Password.\n\n"
                 else:
-                    yield f"data: Something went wrong: {str(e)}\n\n"
+                    yield f"data: Connection Error: {str(e)}\n\n"
         finally:
             tmp_dir_obj.cleanup()
 
