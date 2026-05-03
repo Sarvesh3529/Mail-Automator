@@ -149,8 +149,10 @@ def build_jobs(rows: List[Dict[str, str]], pdf_files: List[Path], mode: str = "m
 def send_with_gmail(jobs: List[Dict[str, str]], user: str, password: str, timeout: int = 10):
     context = ssl.create_default_context()
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+        yield "Connecting to Gmail secure servers..."
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context, timeout=timeout) as server:
             server.login(user, password)
+            yield "Login successful. Starting dispatch..."
             for job in jobs:
                 msg = MIMEMultipart()
                 msg['From'] = user

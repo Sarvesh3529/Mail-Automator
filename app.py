@@ -13,6 +13,20 @@ app = Flask(__name__)
 def index():
     return render_template('index.html')
 
+@app.route('/admin-config', methods=['POST'])
+def admin_config():
+    data = request.json
+    provided_pass = data.get('password')
+    
+    # Pull values from environment variables
+    admin_pass = os.getenv("ADMIN_ACCESS_PASSWORD", "Dogesh")
+    if provided_pass == admin_pass:
+        return jsonify({
+            "email": os.getenv("ADMIN_EMAIL", ""),
+            "password": os.getenv("ADMIN_APP_PASSWORD", "")
+        })
+    return jsonify({"error": "Unauthorized"}), 401
+
 @app.route('/send', methods=['POST'])
 def send_emails():
     email = request.form.get('email')
@@ -60,7 +74,7 @@ def send_emails():
                     yield "data: Error: No matching documents were found for your contacts.\n\n"
                     return
 
-                yield f"data: Found {len(jobs)} matches! Sending emails now...\n\n"
+                yield f"data: Found {len(jobs)} matches. Initializing SMTP...\n\n"
                 
                 for status_msg in email_logic.send_with_gmail(jobs, email, password):
                     yield f"data: {status_msg}\n\n"
@@ -77,7 +91,11 @@ def send_emails():
         finally:
             tmp_dir_obj.cleanup()
 
-    return Response(stream_with_context(generate()), mimetype='text/event-stream')
+    response = Response(stream_with_context(generate()), mimetype='text/event-stream')
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Accel-Buffering'] = 'no'
+    response.headers['Connection'] = 'keep-alive'
+    return response
 
 if __name__ == '__main__':
     app.run(debug=True)

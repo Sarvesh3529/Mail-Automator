@@ -82,14 +82,27 @@
         const logBox = document.getElementById('console');
         const sendBtn = document.getElementById('sendBtn');
 
-        function adminLogin() {
+        async function adminLogin() {
             const pass = prompt("Enter Admin Password:");
-            if (pass === 'Dogesh') {
-                document.getElementById('senderEmail').value = 'sarveshtambe2011@gmail.com';
-                document.getElementById('appPassword').value = 'pusx test mdkc ionu';
-                addLog('Admin authenticated. Your credentials have been applied.');
-            } else if (pass !== null) {
-                alert('Wrong password!');
+            if (!pass) return;
+
+            try {
+                const response = await fetch('/admin-config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: pass })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    document.getElementById('senderEmail').value = data.email;
+                    document.getElementById('appPassword').value = data.password;
+                    addLog('Admin credentials loaded from environment.');
+                } else {
+                    alert(data.error || 'Wrong password!');
+                }
+            } catch (err) {
+                alert('Failed to connect to server for authentication.');
             }
         }
 
