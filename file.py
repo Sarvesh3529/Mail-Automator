@@ -149,40 +149,72 @@ def build_jobs(rows: List[Dict[str, str]], pdf_files: List[Path], mode: str = "m
 
 def send_with_gmail(jobs: List[Dict[str, str]], user: str, password: str):
     context = ssl.create_default_context()
+    server = None
+    
+    # Try common SMTP ports in order of reliability
+    connection_configs = [
+        (465, True),  # Port 465: Explicit SSL
+        (587, False)  # Port 587: STARTTLS
+    ]
+    
+    last_exception = None
+
     try:
-        yield "Connecting to Gmail SMTP..."
-        # Using Port 587 with STARTTLS for better compatibility
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
-            server.ehlo()
-            server.starttls(context=context)
-            server.ehlo()
-            server.login(user, password)
-            yield "Login successful. Dispatching mails..."
+        for port, use_ssl in connection_configs:
+            try:
+                yield f"Attempting connection on Port {port}..."
+                if use_ssl:
+                    server = smtplib.SMTP_SSL("smtp.gmail.com", port, context=context, timeout=20)
+                else:
+                    server = smtplib.SMTP("smtp.gmail.com", port, timeout=20)
+                    server.starttls(context=context)
+                
+                server.login(user, password)
+                yield f"Connected successfully via Port {port}."
+                break # Success, exit the loop
+            except Exception as e:
+                last_exception = e
+                if server:
+                    try: server.quit()
+                    except: pass
+                server = None
+                yield f"Port {port} unreachable, trying fallback..."
+                continue
+
+        if not server:
+            error_msg = str(last_exception)
+            if "10060" in error_msg or "10061" in error_msg or "timed out" in error_msg.lower():
+                raise RuntimeError(f"Network Blocked: Your firewall or ISP is blocking SMTP ports. (Details: {error_msg})")
+            raise RuntimeError(f"Connection failed: {error_msg}")
+
+        for job in jobs:
+            msg = MIMEMultipart()
+            msg['From'] = user
+            msg['To'] = job['to']
+            msg['Subject'] = job['subject']
+            msg.attach(MIMEText(job['body'], 'plain'))
+
+            attachment_path = Path(job['attachment'])
+            with open(attachment_path, "rb") as f:
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(f.read())
             
-            for job in jobs:
-                    msg = MIMEMultipart()
-                    msg['From'] = user
-                    msg['To'] = job['to']
-                    msg['Subject'] = job['subject']
-                    msg.attach(MIMEText(job['body'], 'plain'))
+            encoders.encode_base64(part)
+            part.add_header("Content-Disposition", f'attachment; filename="{attachment_path.name}"')
+            msg.attach(part)
 
-                    attachment_path = Path(job['attachment'])
-                    with open(attachment_path, "rb") as f:
-                        part = MIMEBase("application", "octet-stream")
-                        part.set_payload(f.read())
-                    
-                    encoders.encode_base64(part)
-                    part.add_header("Content-Disposition", f'attachment; filename="{attachment_path.name}"')
-                    msg.attach(part)
-
-                    try:
-                        server.sendmail(user, job['to'], msg.as_string())
-                        yield f"Successfully sent to {job['to']}."
-                    except Exception as e:
-                        yield f"Failed for {job['to']}: {str(e)}"
+            try:
+                server.sendmail(user, job['to'], msg.as_string())
+                yield f"Successfully sent to {job['to']}."
+            except Exception as e:
+                yield f"Failed for {job['to']}: {str(e)}"
 
     except Exception as e:
-        raise RuntimeError(f"SMTP Error: {str(e)}")
+        raise RuntimeError(str(e))
+    finally:
+        if server:
+            try: server.quit()
+            except: pass
 
 
 def parse_args() -> argparse.Namespace:
