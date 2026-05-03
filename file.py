@@ -3,6 +3,7 @@ import os
 import re
 import smtplib
 import ssl
+import socket
 import sys
 import textwrap
 import zipfile
@@ -149,8 +150,18 @@ def build_jobs(rows: List[Dict[str, str]], pdf_files: List[Path], mode: str = "m
 def send_with_gmail(jobs: List[Dict[str, str]], user: str, password: str, timeout: int = 30):
     context = ssl.create_default_context()
     try:
-        yield f"Connecting to Gmail via Port 587 (timeout: {timeout}s)..."
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=timeout) as server:
+        yield f"Connecting to Gmail (IPv4 forced)..."
+        
+        # Force IPv4 to avoid 'Network unreachable' errors on Render
+        remote_host = "smtp.gmail.com"
+        port = 587
+        
+        # Get the IPv4 address specifically
+        addr_info = socket.getaddrinfo(remote_host, port, socket.AF_INET, socket.SOCK_STREAM)
+        ip_address = addr_info[0][4][0]
+
+        with smtplib.SMTP(ip_address, port, timeout=timeout) as server:
+            server.ehlo()
             server.starttls(context=context)
             server.login(user, password)
             yield "Login successful. Starting dispatch..."
