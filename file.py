@@ -154,21 +154,23 @@ def send_with_gmail(jobs: List[Dict[str, str]], user: str, password: str):
     server = None
     
     # Resolve smtp.gmail.com to IPv4 addresses
-    ipv4_hosts = []
-    try:
-        # Get address info, filtering for IPv4 (AF_INET) and TCP (SOCK_STREAM)
-        addr_info = socket.getaddrinfo("smtp.gmail.com", None, socket.AF_INET, socket.SOCK_STREAM)
-        # Extract unique IP addresses from the resolved info
-        ipv4_hosts = list(set([info[4][0] for info in addr_info]))
-        if not ipv4_hosts: # Fallback if getaddrinfo returns empty for some reason
+    def get_ipv4_hosts():
+        try:
+            # Get address info, filtering for IPv4 (AF_INET) and TCP (SOCK_STREAM)
+            addr_info = socket.getaddrinfo("smtp.gmail.com", None, socket.AF_INET, socket.SOCK_STREAM)
+            # Extract unique IP addresses from the resolved info
+            hosts = list(set([info[4][0] for info in addr_info]))
+            return hosts if hosts else ["smtp.gmail.com"]
+        except socket.gaierror:
             ipv4_hosts = ["smtp.gmail.com"]
-    except socket.gaierror:
-        # If DNS resolution fails for IPv4, fall back to using the hostname directly
-        yield "Warning: Could not resolve IPv4 addresses for smtp.gmail.com. Attempting with hostname directly."
-        ipv4_hosts = ["smtp.gmail.com"]
+            return ["smtp.gmail.com"]
+
+    ipv4_hosts = get_ipv4_hosts()
+    if ipv4_hosts == ["smtp.gmail.com"]:
+        yield "Warning: DNS resolution preferred hostname over specific IPv4s."
 
     connection_configs = [
-        (587, False),  # Port 587: STARTTLS
+        (587, False),  # Port 587: STARTTLS (Primary)
         (465, True),   # Port 465: Explicit SSL (Fallback)
         (2525, False)  # Port 2525: STARTTLS (Alternative, as suggested)
     ]
@@ -209,32 +211,55 @@ def send_with_gmail(jobs: List[Dict[str, str]], user: str, password: str):
             error_msg = str(last_exception)
             # Catching Network Unreachable (101/10051) and Connection Refused/Timeout (10060/10061)
             unreachable_codes = ["101", "10051", "10060", "10061", "unreachable", "timed out", "2525"]
-            if any(code in error_msg.lower() for code in unreachable_codes):
-                raise RuntimeError(f"Network Issue: Cannot reach Gmail. Check your internet or firewall rules for Ports 587/465. (Error: {error_msg})")
+            if any(code in error_msg.lower() for code in unreachable_codes) or "timed out" in error_msg.lower():
+                raise RuntimeError(f"Network Issue: Cannot reach Gmail from Render. Check if Ports 587/465/2525 are restricted. (Error: {error_msg})")
             raise RuntimeError(f"Connection failed: {error_msg}")
 
         for job in jobs:
-            msg = MIMEMultipart()
-            msg['From'] = user
-            msg['To'] = job['to']
-            msg['Subject'] = job['subject']
-            msg.attach(MIMEText(job['body'], 'plain'))
+            # Internal retry logic for mid-batch disconnections
+            for send_attempt in range(2):
+                try:
+                    # If server was lost in previous job attempt, try to reconnect
+                    if server is None:
+                        yield f"Reconnecting to SMTP to continue..."
+                        server = smtplib.SMTP(ipv4_hosts[0], 587, timeout=15)
+                        server.starttls(context=context)
+                        server.login(user, password)
 
-            attachment_path = Path(job['attachment'])
-            with open(attachment_path, "rb") as f:
-                part = MIMEBase("application", "octet-stream")
-                part.set_payload(f.read())
-            
-            encoders.encode_base64(part)
-            part.add_header("Content-Disposition", f'attachment; filename="{attachment_path.name}"')
-            msg.attach(part)
+                    msg = MIMEMultipart()
+                    msg['From'] = user
+                    msg['To'] = job['to']
+                    msg['Subject'] = job['subject']
+                    msg.attach(MIMEText(job['body'], 'plain'))
 
-            try:
-                server.sendmail(user, job['to'], msg.as_string())
-                yield f"Successfully sent to {job['to']}."
-            except Exception as e:
-                yield f"Failed for {job['to']}: {str(e)}"
+                    attachment_path = Path(job['attachment'])
+                    with open(attachment_path, "rb") as f:
+                        part = MIMEBase("application", "octet-stream")
+                        part.set_payload(f.read())
+                    
+                    encoders.encode_base64(part)
+                    part.add_header("Content-Disposition", f'attachment; filename="{attachment_path.name}"')
+                    msg.attach(part)
 
+                    server.sendmail(user, job['to'], msg.as_string())
+                    yield f"Successfully sent to {job['to']}."
+                    break # Success, move to next job
+
+                except (smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError, socket.timeout) as e:
+                    server = None # Mark for reconnection
+                    if send_attempt == 0:
+                        yield f"Transient error for {job['to']}, retrying once..."
+                        time.sleep(1)
+                        continue
+                    else:
+                        yield f"Failed for {job['to']} after retry: {str(e)}"
+                        break
+                except Exception as e:
+                    yield f"Failed for {job['to']}: {str(e)}"
+                    break
+
+        yield "Finished processing all jobs."
+        
     except Exception as e:
         raise RuntimeError(str(e))
     finally:
