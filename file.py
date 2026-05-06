@@ -10,6 +10,7 @@ import zipfile
 import base64
 from pathlib import Path
 from typing import Dict, List, Optional
+import socket
 from xml.etree import ElementTree as ET
 from dotenv import load_dotenv
 from email import encoders
@@ -152,38 +153,53 @@ def send_with_gmail(jobs: List[Dict[str, str]], user: str, password: str):
     context = ssl.create_default_context()
     server = None
     
-    # Prioritize Port 587 as confirmed working in this environment
+    # Resolve smtp.gmail.com to IPv4 addresses
+    ipv4_hosts = []
+    try:
+        # Get address info, filtering for IPv4 (AF_INET) and TCP (SOCK_STREAM)
+        addr_info = socket.getaddrinfo("smtp.gmail.com", None, socket.AF_INET, socket.SOCK_STREAM)
+        # Extract unique IP addresses from the resolved info
+        ipv4_hosts = list(set([info[4][0] for info in addr_info]))
+        if not ipv4_hosts: # Fallback if getaddrinfo returns empty for some reason
+            ipv4_hosts = ["smtp.gmail.com"]
+    except socket.gaierror:
+        # If DNS resolution fails for IPv4, fall back to using the hostname directly
+        yield "Warning: Could not resolve IPv4 addresses for smtp.gmail.com. Attempting with hostname directly."
+        ipv4_hosts = ["smtp.gmail.com"]
+
     connection_configs = [
         (587, False),  # Port 587: STARTTLS
-        (465, True)    # Port 465: Explicit SSL (Fallback)
+        (465, True),   # Port 465: Explicit SSL (Fallback)
+        (2525, False)  # Port 2525: STARTTLS (Alternative, as suggested)
     ]
     
     last_exception = None
 
     try:
-        # Try connecting with a retry loop to handle intermittent "Network unreachable"
         for attempt in range(2):
-            for port, use_ssl in connection_configs:
-                try:
-                    yield f"Attempting connection (Port {port}, Attempt {attempt + 1})..."
-                    if use_ssl:
-                        server = smtplib.SMTP_SSL("smtp.gmail.com", port, context=context, timeout=15)
-                    else:
-                        server = smtplib.SMTP("smtp.gmail.com", port, timeout=15)
-                        server.starttls(context=context)
-                    
-                    server.login(user, password)
-                    yield f"Connected successfully via Port {port}."
-                    break 
-                except Exception as e:
-                    last_exception = e
-                    if server:
-                        try: server.quit()
-                        except: pass
-                    server = None
-                    yield f"Port {port} failed: {str(e)}"
-                    continue
-            if server:
+            for host_to_try in ipv4_hosts: # Iterate through resolved IPv4 addresses or hostname
+                for port, use_ssl in connection_configs:
+                    try:
+                        yield f"Attempting connection to {host_to_try}:{port} (Attempt {attempt + 1})..."
+                        if use_ssl:
+                            server = smtplib.SMTP_SSL(host_to_try, port, context=context, timeout=15)
+                        else:
+                            server = smtplib.SMTP(host_to_try, port, timeout=15)
+                            server.starttls(context=context)
+                        
+                        server.login(user, password)
+                        yield f"Connected successfully via {host_to_try}:{port}."
+                        break # Success, exit port loop
+                    except Exception as e:
+                        last_exception = e
+                        if server:
+                            try: server.quit()
+                            except: pass
+                        server = None
+                        yield f"Connection to {host_to_try}:{port} failed: {str(e)}"
+                if server: # If connected on any port for this IP, break IP loop
+                    break
+            if server: # If connected on any IP, break attempt loop
                 break
             if attempt == 0:
                 yield "Retrying connection in 2 seconds..."
@@ -192,7 +208,7 @@ def send_with_gmail(jobs: List[Dict[str, str]], user: str, password: str):
         if not server:
             error_msg = str(last_exception)
             # Catching Network Unreachable (101/10051) and Connection Refused/Timeout (10060/10061)
-            unreachable_codes = ["101", "10051", "10060", "10061", "unreachable", "timed out"]
+            unreachable_codes = ["101", "10051", "10060", "10061", "unreachable", "timed out", "2525"]
             if any(code in error_msg.lower() for code in unreachable_codes):
                 raise RuntimeError(f"Network Issue: Cannot reach Gmail. Check your internet or firewall rules for Ports 587/465. (Error: {error_msg})")
             raise RuntimeError(f"Connection failed: {error_msg}")
